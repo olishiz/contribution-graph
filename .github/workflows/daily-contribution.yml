@@ -1,0 +1,51 @@
+# Keeps the contribution graph green.
+#
+# Uses https://github.com/bcanseco/github-contribution-graph-action
+# Each run rolls a number from 1 to 5 and pushes that many empty commits
+# for each day it fills. The author email is the public email on the
+# olishiz GitHub account.
+#
+# 01:15 UTC is 09:15 in Malaysia (Asia/Kuala_Lumpur, no daylight saving).
+# One scheduled run per day, so the roll happens once. Running it again
+# the same day adds another 1–5 commits on top.
+
+name: Daily contribution
+
+on:
+  schedule:
+    - cron: "15 1 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days to fill, counting back from today. 1 is today only. 365 fills the past year. Run 365 once."
+        required: false
+        default: "1"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/daily-contribution.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-contribution
+  cancel-in-progress: false
+
+jobs:
+  contribute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Push 1 to 5 commits for each filled day
+        uses: bcanseco/github-contribution-graph-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_EMAIL: zhuen1101@hotmail.com
+          GIT_COMMIT_MESSAGE: "chore: contribution [skip ci]"
+          MAX_DAYS: "${{ github.event_name == 'workflow_dispatch' && inputs.days || '1' }}"
+          MIN_COMMITS_PER_DAY: "1"
+          MAX_COMMITS_PER_DAY: "5"
+          INCLUDE_WEEKDAYS: "true"
+          INCLUDE_WEEKENDS: "true"
