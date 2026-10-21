@@ -1,31 +1,23 @@
-# Keeps the contribution graph green.
+# One roll of 1–5 commits per Kuala Lumpur day.
 #
-# Uses https://github.com/bcanseco/github-contribution-graph-action
-# Each run rolls a number from 1 to 5 and pushes that many empty commits
-# for each day it fills. The author email is the public email on the
-# olishiz GitHub account.
-#
-# 01:15 UTC is 09:15 in Malaysia (Asia/Kuala_Lumpur, no daylight saving).
-# One scheduled run per day, so the roll happens once. Running it again
-# the same day adds another 1–5 commits on top.
+# GitHub Actions schedules are UTC. Asia/Kuala_Lumpur is UTC+8 all year.
+#   09:15 KL = 01:15 UTC
+#   21:15 KL = 13:15 UTC
+# The evening run records the day only when the morning run did not.
+# Commit timestamps are noon +0800, so the square stays on that KL date.
 
 name: Daily contribution
 
 on:
   schedule:
     - cron: "15 1 * * *"
+    - cron: "15 13 * * *"
   workflow_dispatch:
     inputs:
       days:
-        description: "Days to fill, counting back from today. 1 is today only. 365 fills the past year. Run 365 once."
+        description: "Kuala Lumpur days to fill, counting back from today. A day that already has a commit is skipped. 365 fills the open days in the past year."
         required: false
         default: "1"
-  push:
-    branches:
-      - master
-      - main
-    paths:
-      - ".github/workflows/daily-contribution.yml"
 
 permissions:
   contents: write
@@ -39,14 +31,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Push 1 to 5 commits for each filled day
-        uses: bcanseco/github-contribution-graph-action@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Commit open Kuala Lumpur days
+        id: commit
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_EMAIL: zhuen1101@hotmail.com
-          GIT_COMMIT_MESSAGE: "chore: contribution [skip ci]"
+          GIT_NAME: olishiz
           MAX_DAYS: "${{ github.event_name == 'workflow_dispatch' && inputs.days || '1' }}"
-          MIN_COMMITS_PER_DAY: "1"
-          MAX_COMMITS_PER_DAY: "5"
-          INCLUDE_WEEKDAYS: "true"
-          INCLUDE_WEEKENDS: "true"
+        run: |
+          before="$(git rev-parse HEAD)"
+          python3 scripts/contribute.py
+          after="$(git rev-parse HEAD)"
+          if [ "$before" = "$after" ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push
+        if: steps.commit.outputs.pushed == 'true'
+        run: git push origin "HEAD:${GITHUB_REF_NAME}"
